@@ -13,25 +13,30 @@ interface Todo {
   id: string;
   name: string;
   completed: boolean;
-  created_at: Date;
+  created_at: string;
 }
 
 const Todo = () => {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTodo, setNewTodo] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [isAdding, setIsAdding] = useState(false);
 
   useEffect(() => {
     fetchTodos();
   }, []);
 
   const fetchTodos = async () => {
+    setLoading(true);
     const { data, error } = await supabase.from("TodoList").select("*");
-    if (error) console.log("Error fetching", error);
+    if (error) toast.error("Failed to load tasks");
     else setTodos(data);
+    setLoading(false);
   };
 
   const addTodo = async () => {
-    if (newTodo.trim() === "") return;
+    if (isAdding || newTodo.trim() === "") return;
+    setIsAdding(true);
     const todo = {
       name: newTodo.trim(),
       completed: false,
@@ -49,22 +54,31 @@ const Todo = () => {
       setTodos((prev) => [data, ...prev]);
       setNewTodo("");
     }
+
+    setIsAdding(false);
   };
 
   const toggleTodo = async (id: string, isComplete: boolean) => {
+    setTodos(
+      todos.map((todo) =>
+        todo.id === id ? { ...todo, completed: isComplete } : todo
+      )
+    );
+
     const { error } = await supabase
       .from("TodoList")
       .update({ completed: isComplete })
       .eq("id", id);
     if (error) {
       toast.error(error.message);
-    } else {
-      toast.success(`Task updated successfully`);
-      setTodos(
-        todos.map((todo) =>
-          todo.id === id ? { ...todo, completed: isComplete } : todo
+      // rollback
+      setTodos((prev) =>
+        prev.map((todo) =>
+          todo.id === id ? { ...todo, completed: !isComplete } : todo
         )
       );
+    } else {
+      toast.success(`Task updated successfully`);
     }
   };
 
@@ -101,6 +115,7 @@ const Todo = () => {
           <div className='flex gap-2'>
             <input
               type='text'
+              aria-label='New task name'
               className='flex h-10 w-full rounded-md border border-gray-500 bg-white px-3 py-2 text-sm  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2 flex-1'
               placeholder='What needs to be done?'
               value={newTodo}
@@ -113,9 +128,15 @@ const Todo = () => {
             />
             <button
               onClick={addTodo}
-              className='bg-blue-600 hover:bg-blue-700 text-white rounded size-10 grid place-items-center'
+              disabled={isAdding}
+              className='bg-blue-600 hover:bg-blue-700 text-white rounded size-10 grid place-items-center disabled:opacity-60'
+              aria-label='Add new task'
             >
-              <IconPlus className='w-4 h-4' />
+              {isAdding ? (
+                <span className='block size-4 rounded-full border-2 border-white border-t-transparent animate-spin' />
+              ) : (
+                <IconPlus className='w-4 h-4' />
+              )}
             </button>
           </div>
         </div>
@@ -154,7 +175,11 @@ const Todo = () => {
           </h3>
         </div>
         <div className='p-6 pt-0'>
-          {todos.length === 0 ? (
+          {loading ? (
+            <div className=' py-12 w-full '>
+              <div className='size-16 border-2 border-blue-500 border-t-transparent animate-spin mx-auto rounded-full'></div>
+            </div>
+          ) : todos.length === 0 ? (
             <div className='text-center py-12'>
               <IconCircleCheck className='w-16 h-16 text-gray-300 mx-auto mb-4' />
               <p className='text-gray-500 text-lg'>No tasks yet</p>
